@@ -582,26 +582,26 @@ with st.container(border=True):
         )
     
     with input_col:
-    if source_option == "구글 스프레드시트(2026실시간)":
-            spreadsheet_url = st.text_input(
-                "🔗 구글 스프레드시트 URL:",
-                value=DEFAULT_GSHEETS_URL if DEFAULT_GSHEETS_URL != "여기에_사용하실_구글스프레드시트_링크를_넣어주세요" else "",
-                placeholder="https://docs.google.com/spreadsheets/d/...",
-                label_visibility="collapsed"
-            )
-            data_source = spreadsheet_url
-            # 구글 시트 모드인데 주소가 없을 때만 멈추도록 수정
-            if not data_source:
-                st.warning("⚠️ 구글 스프레드시트 URL을 입력해 주세요.")
-                st.stop()
-        else:
-            # 엑셀 모드일 때는 주소 검사 없이 바로 여기로 넘어옵니다
-            uploaded_file = st.file_uploader("📂 엑셀 파일 업로드 (.xlsx)", type=['xlsx'], label_visibility="collapsed")
-            if uploaded_file is not None:
-                data_source = uploaded_file
+        if source_option == "구글 스프레드시트(2026실시간)":
+                spreadsheet_url = st.text_input(
+                    "🔗 구글 스프레드시트 URL:",
+                    value=DEFAULT_GSHEETS_URL if DEFAULT_GSHEETS_URL != "여기에_사용하실_구글스프레드시트_링크를_넣어주세요" else "",
+                    placeholder="https://docs.google.com/spreadsheets/d/...",
+                    label_visibility="collapsed"
+                )
+                data_source = spreadsheet_url
+                # 구글 시트 모드인데 주소가 없을 때만 멈추도록 수정
+                if not data_source:
+                    st.warning("⚠️ 구글 스프레드시트 URL을 입력해 주세요.")
+                    st.stop()
             else:
-                data_source = "2025실적데이터.xlsx"
-                st.info("ℹ️ 별도의 업로드 파일이 없을 경우 '2025실적데이터.xlsx'를 기본으로 분석합니다.")
+                # 엑셀 모드일 때는 주소 검사 없이 바로 여기로 넘어옵니다
+                uploaded_file = st.file_uploader("📂 엑셀 파일 업로드 (.xlsx)", type=['xlsx'], label_visibility="collapsed")
+                if uploaded_file is not None:
+                    data_source = uploaded_file
+                else:
+                    data_source = "2025실적데이터.xlsx"
+                    st.info("ℹ️ 별도의 업로드 파일이 없을 경우 '2025실적데이터.xlsx'를 기본으로 분석합니다.")
 
 with st.spinner("데이터를 불러오고 처리하는 중입니다..."):
     if source_option == "엑셀(2025최종/업로드)":
@@ -1569,6 +1569,7 @@ with tab2:
             
     else:
         st.info("실인원 현황을 구성할 수 있는 데이터가 없습니다.")
+
 
 
 
