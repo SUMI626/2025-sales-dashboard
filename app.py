@@ -738,10 +738,10 @@ elif '단위' in filtered_df.columns:
     actual_unit_col = '단위'
 
 # ================================================================
-# 지표별 데이터 소스 분리 및 최종 실적 계산
+# 지표별 데이터 소스 분리 및 정의된 로직으로 계산
 # ================================================================
 
-# 1. 연인원 계산: 단위가 '명'인 행의 실적 합계
+# 1. 연인원: 단위가 '명'인 행의 실적 합계 ('기타' 포함 모든 횟수)
 if actual_unit_col:
     cleaned_unit = filtered_df[actual_unit_col].astype(str).str.strip()
     is_person = (cleaned_unit == '명') | (cleaned_unit == '명(실인원)')
@@ -755,33 +755,43 @@ if performance_col in df_person.columns:
 else:
     총연인원 = len(df_person)
 
-# 2. 실인원 계산: '명' 단위 행 중 '기타' 제외 및 고유ID 기준 중복 제거
+# 2. 실인원 & 중복실인원용 데이터 정제 (이름에 '기타' 포함된 행 제외)
 if name_col in df_person.columns:
+    # 이름에 '기타'가 포함된 행은 실인원/중복실인원 계산에서 원천 배제
     is_etc = df_person[name_col].astype(str).str.contains('기타', na=False)
     valid_unique_df = df_person[~is_etc].copy()
 else:
     valid_unique_df = df_person.copy()
 
-# 고유ID 정제 (빈값 및 에러값 제외)
+# 고유ID(이름+생년+유형+정도)가 유효한 데이터만 남김
 valid_unique_df = valid_unique_df.loc[
     valid_unique_df['고유ID'].notna() & 
     (valid_unique_df['고유ID'].astype(str).str.strip() != '') &
     (valid_unique_df['고유ID'].astype(str).str.strip() != 'nan')
 ].copy()
 
+# 실인원 계산: 고유ID 기준 중복 제거 (수미 님 정의: 1명)
 총실인원 = valid_unique_df['고유ID'].nunique()
 
-# 3. 중복실인원 계산: 가장 확실한 산식 (전체 이용 횟수 - 실제 인원)
-# 이 수치는 '한 번 이상 더 방문한 횟수'를 의미하며 논리적으로 완벽합니다.
-중복실인원 = 총연인원 - 총실인원 if 총연인원 > 총실인원 else 0
+# 3. 중복실인원 계산: 고유ID + 팀이름 기준 중복 제거 (수미 님 정의: 이용 팀 수)
+actual_team_col = team_col
+if actual_team_col not in valid_unique_df.columns:
+    for c in valid_unique_df.columns:
+        if any(keyword in str(c) for keyword in ['팀', '부서', 'team']):
+            actual_team_col = c
+            break
+
+if actual_team_col in valid_unique_df.columns:
+    # 고유ID와 팀이름의 유니크한 조합 개수를 카운트
+    중복실인원 = len(valid_unique_df[['고유ID', actual_team_col]].drop_duplicates())
+else:
+    중복실인원 = 총실인원
 
 # 4. 운영일수 및 일평균 이용자 계산
 def get_biz_days(parsed_dates):
     if len(parsed_dates) == 0: return 0
     start_date = parsed_dates.min().date()
     end_date = parsed_dates.max().date()
-    
-    # 한국 법정공휴일 리스트
     holidays = [
         "2025-01-01", "2025-01-28", "2025-01-29", "2025-01-30", "2025-03-01", "2025-03-03", 
         "2025-05-05", "2025-05-06", "2025-06-06", "2025-08-15", "2025-10-03", "2025-10-05", 
@@ -1543,6 +1553,7 @@ with tab2:
             
     else:
         st.info("실인원 현황을 구성할 수 있는 데이터가 없습니다.")
+
 
 
 
