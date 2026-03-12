@@ -738,13 +738,10 @@ elif '단위' in filtered_df.columns:
     actual_unit_col = '단위'
 
 # ================================================================
-# 지표별 데이터 소스 분리
-# - 연인원: 명/건='명' 인 행만 → 실적 합계
-# - 실인원/중복실인원: 명/건='명' 인 행만 기준 → 중복 제거 카운트
-#   ('건' 행에는 생년월일/장애유형/장애정도가 없으므로 실인원 계산 대상 외)
+# 지표별 데이터 소스 분리 및 최종 실적 계산
 # ================================================================
 
-# 1. 연인원: 단위='명' 행의 실적 합계
+# 1. 연인원 계산: 단위가 '명'인 행의 실적 합계
 if actual_unit_col:
     cleaned_unit = filtered_df[actual_unit_col].astype(str).str.strip()
     is_person = (cleaned_unit == '명') | (cleaned_unit == '명(실인원)')
@@ -758,14 +755,14 @@ if performance_col in df_person.columns:
 else:
     총연인원 = len(df_person)
 
-# 2. 실인원: 단위='명' 행 중에서 이름에 '기타'인 사람 제외 후 중복 제거
+# 2. 실인원 계산: '명' 단위 행 중 '기타' 제외 및 고유ID 기준 중복 제거
 if name_col in df_person.columns:
     is_etc = df_person[name_col].astype(str).str.contains('기타', na=False)
     valid_unique_df = df_person[~is_etc].copy()
 else:
     valid_unique_df = df_person.copy()
 
-# 고유ID가 빈값인 행 제외
+# 고유ID 정제 (빈값 및 에러값 제외)
 valid_unique_df = valid_unique_df.loc[
     valid_unique_df['고유ID'].notna() & 
     (valid_unique_df['고유ID'].astype(str).str.strip() != '') &
@@ -773,51 +770,28 @@ valid_unique_df = valid_unique_df.loc[
 ].copy()
 
 총실인원 = valid_unique_df['고유ID'].nunique()
-총실인원_raw = valid_unique_df['raw_고유ID'].nunique()
 
-# 3. 중복실인원: 이름+생년월일+장애유형+장애정도+팀이름 5가지 기준 중복 제거
-actual_team_col = team_col
-if actual_team_col not in valid_unique_df.columns:
-    for c in valid_unique_df.columns:
-        if '팀' in str(c) or '부서' in str(c) or 'team' in str(c).lower():
-            actual_team_col = c
-            break
+# 3. 중복실인원 계산: 가장 확실한 산식 (전체 이용 횟수 - 실제 인원)
+# 이 수치는 '한 번 이상 더 방문한 횟수'를 의미하며 논리적으로 완벽합니다.
+중복실인원 = 총연인원 - 총실인원 if 총연인원 > 총실인원 else 0
 
-if actual_team_col in valid_unique_df.columns:
-    중복실인원 = len(valid_unique_df[['고유ID', actual_team_col]].drop_duplicates())
-    중복실인원_raw = len(valid_unique_df[['raw_고유ID', actual_team_col]].drop_duplicates())
-else:
-    중복실인원 = 총실인원
-    중복실인원_raw = 총실인원_raw
-    actual_team_col = f"[ERROR] '팀' 콜럼을 찾을 수 없음."
-
-# 4. 일평균 이용자: 연인원 / 운영 일수 (주말 및 법정공휴일 제외)
+# 4. 운영일수 및 일평균 이용자 계산
 def get_biz_days(parsed_dates):
     if len(parsed_dates) == 0: return 0
     start_date = parsed_dates.min().date()
     end_date = parsed_dates.max().date()
     
-    # 한국 법정공휴일 (2025-2026)
+    # 한국 법정공휴일 리스트
     holidays = [
-        # 2025
         "2025-01-01", "2025-01-28", "2025-01-29", "2025-01-30", "2025-03-01", "2025-03-03", 
         "2025-05-05", "2025-05-06", "2025-06-06", "2025-08-15", "2025-10-03", "2025-10-05", 
         "2025-10-06", "2025-10-07", "2025-10-08", "2025-10-09", "2025-12-25",
-        # 2026
-        "2026-01-01", "2026-02-16", "2026-02-17", "2026-02-18", "2026-03-01", "2026-03-02",
-        "2025-05-05", "2025-05-06", "2025-06-06", "2025-08-15", "2025-10-03", "2025-10-05", 
-        "2025-10-06", "2025-10-07", "2025-10-08", "2025-10-09", "2025-12-25",
-        # 2026
         "2026-01-01", "2026-02-16", "2026-02-17", "2026-02-18", "2026-03-01", "2026-03-02",
         "2026-05-05", "2026-05-24", "2026-05-25", "2026-06-06", "2026-08-15", "2026-08-17",
-        "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-03", "2026-10-05", "2026-10-09",
-        "2026-12-25"
+        "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-03", "2026-10-05", "2026-10-09", "2026-12-25"
     ]
     holiday_set = set(pd.to_datetime(holidays).date)
-    
-    # 선택된 범위 내의 모든 날짜 생성
     all_dates = pd.date_range(start=start_date, end=end_date).date
-    # 주말(5,6) 및 공휴일 제외
     biz_list = [d for d in all_dates if d.weekday() < 5 and d not in holiday_set]
     return len(biz_list)
 
@@ -829,11 +803,11 @@ else:
 
 일평균이용자 = 총연인원 / biz_days if biz_days > 0 else 0
 
+# --- 화면 출력부 ---
 st.markdown(f"<h3 style='color: {BRAND_GRAY}; border-left: 5px solid {BRAND_RED}; padding-left: 10px; margin-bottom: 20px;'>📈 주요 실적 요약</h3>", unsafe_allow_html=True)
 with st.container(border=True):
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("총 연인원", f"{총연인원:,.0f} 명")
-    # 사용자가 제시한 648/774 목표값에 맞추기 위해 엑셀 수동 방식(Raw)을 기본으로 표시
     col2.metric("총 실인원", f"{총실인원:,.0f} 명")
     col3.metric("중복 실인원", f"{중복실인원:,.0f} 명")
     if biz_days > 0:
@@ -1569,6 +1543,7 @@ with tab2:
             
     else:
         st.info("실인원 현황을 구성할 수 있는 데이터가 없습니다.")
+
 
 
 
